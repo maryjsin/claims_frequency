@@ -11,7 +11,7 @@ fontsize: 11pt
 ## Assumptions and data adjustments
 Prior to the modelling process, we made the assumptions found on the case study outline found on Learn. Other assumptions and data adjustments made will be discussed throughout the report as we go through the modelling process. 
 
-```{r, include=FALSE}
+```{r}
 library(dplyr)
 library(knitr)
 setwd("C:/Users/maryj/Google Drive/School/4B/ACTSC 489/Frequency Model")
@@ -23,7 +23,7 @@ compData$partition <-ifelse(compData$rand_sample<0.7, "Training", "Holdout")
 
 ## EDA on critical modelling variables
 # EDA on response
-```{r, echo=FALSE}
+```{r}
 claim_count_summary = compData %>%
   group_by(Comp_claim_count) %>%
   summarise(record_count = n())
@@ -33,7 +33,7 @@ The response data seem reasonable, with the majority risks having no claim count
 
 # EDA on exposure
 Let's check the minimum, median and maximum for the exposures:
-```{r, echo=FALSE}
+```{r}
 compData %>% 
   pull(Comp_earned_count) %>%
   quantile(probs = c(0, 0.5, 1))
@@ -42,7 +42,7 @@ The exposures also seem reasonable with the lowest value being close to 0 (but n
 
 Checking the frequency distribution across different accident years, we see that there are some discrepancies in frequency, most likely attributed to trend over the years. We'll account for that by introducing a temporal control variable in our models.
 
-```{r, echo=FALSE}
+```{r}
 compData %>%
   group_by(Accident_year) %>%
   summarise(exposure_total = sum(Comp_earned_count),
@@ -50,7 +50,7 @@ compData %>%
   mutate(frequency = numclaims_total / exposure_total)
 ```
 Now, we start the modelling process by dividing our data into training and holdout set using a 70-30 split.
-```{r, echo=FALSE}
+```{r}
 overall_exposure = compData %>%
   pull(Comp_earned_count) %>%
   sum()
@@ -64,7 +64,7 @@ compData %>%
 ```
 Following some validation, we can see that there is a 70-30 split of exposure between training and holdout and the frequency for both are similar, so there is no evidence of bias between the two.
 
-```{r, include=FALSE}
+```{r}
 # Frequency GLM - Initial Model Form
 GLM_initial <- glm(Comp_claim_count ~ factor(Accident_year), 
                 family=quasipoisson(link="log"), 
@@ -81,7 +81,7 @@ We start with GLM_initial, a glm fit with just the temporal control variable and
 levels do not have a large amount of exposure. We should group based on the meaning of the levels, we assign "Married" to the levels Married, Same Sex, and
 Common Law, and "Single" otherwise.
 
-```{r, include=FALSE}
+```{r}
 compData = compData %>%
   mutate(Marital_status = case_when(
     Marital_status == "Single" ~ "Single",
@@ -95,7 +95,7 @@ compData = compData %>%
 ))
 ```
 
-```{r, echo=FALSE, include=FALSE}
+```{r}
 compData %>%
   filter(partition == "Training") %>%
   group_by(Marital_status) %>%
@@ -103,7 +103,7 @@ compData %>%
             frequency = sum(Comp_claim_count) / sum(Comp_earned_count))
 ```
 
-```{r, include=FALSE}
+```{r}
 GLM1 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status, 
                 family=quasipoisson(link="log"), 
                 data = compData, 
@@ -116,7 +116,7 @@ summary(GLM1)
 We now perform a series of statistical tests, the results are summarised in the following table. Assessing **significance**, the p value is small for "Single". It also seems **reasonable** to do so since it's common in the insurance industry to use marital status as a rating variable. This is mostly because single drivers are usually younger and less experienced, thus are more likely to incur a claim. You can see claim frequency being higher for single drivers compared to their married counterpart in the appendix. For a **parsimony** check, AIC for GLM_initial was 15503 and decreases to 15493 for GLM1 and BIC increases from 15532 to 15541. The model passes AIC but fails BIC test. Performing a **time consistency** test, we fit an interaction between Marital_status and accident year in the
 model. The overall effect of Single and Missing levels, for each accident year, is obtained by aggregating the corresponding coefficients from this model. We find that "Single" is consistent across the the three years but "Missing" is not. However, this is not surprising due to low data volume in the "Missing" level. We are more concerned that the "Single" level passes the time consistency test since it has the most number of exposures anyway. Lastly, we perform an F test comparing GLM_initial with our nested model GLM1. The p value is 0.003797 and therefore significant. Following these tests, we conclude that adding Marital_status to our model increases its predictive power, and GLM1 becomes our best model so far.
 
-```{r, include=FALSE}
+```{r}
 AIC_BIC <- function(model_ODP) {
 model_poi <- glm(model_ODP$y~model_ODP$x, family=poisson(link="log"), data=model_ODP$data, offset=model_ODP$offset, subset=model_ODP$subset, na.action="na.pass", x=TRUE)
 AIC <- AIC(model_poi)
@@ -125,13 +125,13 @@ list("AIC"=AIC, "BIC"=BIC)
 }
 ```
 
-```{r, include=FALSE}
+```{r}
 AIC_BIC(GLM_initial)
 AIC_BIC(GLM1)
 anova(GLM_initial,GLM1,test = "F")
 ```
 
-```{r, include=FALSE}
+```{r}
 # time consistency
 compData = compData %>%
   mutate(AY_factor = as.factor(Accident_year))
@@ -145,7 +145,7 @@ glm_marital_status_TC <- glm(Comp_claim_count ~ AY_factor * Marital_status,
 summary(glm_marital_status_TC)
 ```
 
-```{r, echo=FALSE}
+```{r}
 
 effect_2018_M = glm_marital_status_TC$coefficients['Marital_statusMissing'] 
 effect_2019_M = glm_marital_status_TC$coefficients['Marital_statusMissing'] + glm_marital_status_TC$coefficients['AY_factor2019:Marital_statusMissing']
@@ -161,13 +161,13 @@ kable(data.frame(c(GLM1$coefficients['Marital_statusMissing'],GLM1$coefficients[
 # Insured age
 We now wish to create a new variable which we suspect is a good predictor. We create the insured_age variable, which is the how old the insured is. We do so by subtracting the insured birth year from the year of the term effective date. Once created, we find that insured_age has missing values, however this is only for a small number of records and not accounting for a lot of exposures (see appendix for more details). Therefore, we decided to impute the missing values with the median insured age of 48. We also calculated the minimum and maximum value to validate our data:
 
-```{r, include=FALSE}
+```{r}
 # Creating insured_age variable
 compData = compData %>%
   mutate(insured_age = as.numeric(substr(Term_effective_date,0,4)) - as.numeric(substr(Insured_birth_date,0,4)))
 ```
 
-```{r, include=FALSE}
+```{r}
 compData %>% 
   filter(partition == "Training") %>%
   mutate(insured_age_missing = is.na(insured_age)) %>%
@@ -177,7 +177,7 @@ compData %>%
             frequency = sum(Comp_claim_count) / sum(exposure))
 ```
 
-```{r, echo=FALSE}
+```{r}
 compData %>%
   filter(partition == "Training") %>%
   pull(insured_age) %>%
@@ -185,21 +185,21 @@ compData %>%
 ```
 We can see that the minimum and maximum age seem reasonable, there aren’t any negative or extremely low/high values, although 99 seems a little old to be still driving! But let’s not make any additional modifications and visualize the data, we can see from the graph (in the appendix) that density for much older drivers is small, and density is concentrated at the median. Therefore, let’s add this variable to our GLM1, which we now call GLM2.
 
-```{r, include=FALSE}
+```{r}
 # Replace missing values with median age of 48
 compData = compData %>% 
   mutate(insured_age_missing = is.na(insured_age),
          insured_age_imputed = ifelse(insured_age_missing, 48, insured_age))
 ```
 
-```{r, include=FALSE}
+```{r}
 library(ggplot2)
 ggplot(data = compData %>% filter(partition == "Training"), aes(x = insured_age_imputed)) + 
   geom_density() +
   geom_vline(xintercept = 48, colour = "red")
 ```
 
-```{r, include=FALSE}
+```{r}
 GLM2 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured_age_imputed, 
                 family=quasipoisson(link="log"), 
                 data = compData, 
@@ -212,7 +212,7 @@ summary(GLM2)
 
 Similar to before, we perform our statistical tests, the results are summarised in the following table. Assessing **significance**, the p value is very small at 0.000127 for insured_age. From a **reasonability** standpoint, using age as a rating variable is reasonable and common in insurance, since usually younger drivers are less experienced, and thus more likely to incur a claim. You can see from the table below that the coefficient for insured_age is negative suggesting that claim frequency decreases as age increases, which is as expected. For the **parsimony** check, AIC for GLM1 was 15493 and decreases to 15476 for GLM2 and BIC also decreases from 15541 to 15534. Hence, the model passes both AIC and BIC test. Now, let's perform a **time consistency** test, we fit an interaction between insured_age and accident year in the model. The overall effect of insured age, for each accident year, is obtained by aggregating the corresponding coefficients from this model. The results show that insured_age passes the time consistency check. Lastly, we perform an F test comparing GLM1 with GLM2. The p value is 0.0001133 and therefore very significant. Since insured_age passes all of our statistical tests, we keep it in our model, and GLM2 becomes our best model so far.
 
-```{r, include=FALSE}
+```{r}
 # time consistency
 compData = compData %>%
   mutate(AY_factor = as.factor(Accident_year))
@@ -226,7 +226,7 @@ glm_insured_age_TC <- glm(Comp_claim_count ~ AY_factor * insured_age_imputed,
 summary(glm_insured_age_TC)
 ```
 
-```{r, echo=FALSE}
+```{r}
 
 effect_2018 = glm_insured_age_TC$coefficients['insured_age_imputed']
 effect_2019 = glm_insured_age_TC$coefficients['insured_age_imputed'] + glm_insured_age_TC$coefficients['AY_factor2019:insured_age_imputed']
@@ -235,7 +235,7 @@ effect_2020 = glm_insured_age_TC$coefficients['insured_age_imputed'] + glm_insur
 kable(data.frame(GLM2$coefficients['insured_age_imputed'],0.000127,effect_2018,effect_2019,effect_2020), col.names=c("Coefficients", "P-value", "2018 Effect", "2019 Effect","2020 Effect"), digits = 6)
 ```
 
-```{r, include=FALSE}
+```{r}
 AIC_BIC(GLM1)
 AIC_BIC(GLM2)
 anova(GLM1,GLM2, test="F")
@@ -244,13 +244,13 @@ anova(GLM1,GLM2, test="F")
 
 We now wish to create the vehicle_age variable, which is simply how old the vehicle is. We do so by subtracting the vehicle model year from the year of the term effective date. Once created, we find that vehicle_age is complete and has no missing values, so we do not modify the data further. Let's validate our data by calculating the minimum, median and maximum value:
 
-```{r, include=FALSE}
+```{r}
 # Creating vehicle_age variable (there is no missing data)
 compData = compData %>%
   mutate(vehicle_age = as.numeric(substr(Term_effective_date,0,4)) - Vehicle_model_year)
 ```
 
-```{r, echo=FALSE}
+```{r}
 compData %>%
   filter(partition == "Training") %>%
   pull(vehicle_age) %>%
@@ -258,13 +258,13 @@ compData %>%
 ```
 The newest vehicle is two years old and the oldest 65 years old. The median is around 10. These numbers seem reasonable for vehicle age as there are no negative integers and no extreme high values. The distribution of the variable also seem reasonable, with a positively skewed distribution (see appendix). 
 
-```{r, include=FALSE}
+```{r}
 ggplot(data = compData %>% filter(partition == "Training"), aes(x = vehicle_age)) + 
   geom_density() +
   geom_vline(xintercept = 10, colour = "red")
 ```
 We fit a new glm model (GLM3) with vehicle_age and the predictors from GLM2.
-```{r, include=FALSE}
+```{r}
 GLM3 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured_age_imputed + vehicle_age, 
                 family=quasipoisson(link="log"), 
                 data = compData, 
@@ -276,7 +276,7 @@ summary(GLM3)
 ```
 Let's test our new model. The p value is extremely small (~0) for vehicle_age there it is very **significant**. From a **reasonability** standpoint, using vehicle age as a rating variable is reasonable and often used in insurance, we find that the coefficient is negative suggesting that the newer the vehicle, the more likely it is to incur a claim. This makes sense for comprehensive coverage, especially in the case of thefts, as newer vehicles are usually targeted. For the **parsimony** check, both AIC and BIC decreases, from 15476 to 15399 and 15534 to 15466, respectively. Hence, the model passes both AIC and BIC test. Now, let's perform a **time consistency** test, this is done in the same way described above. The results show that vehicle_age is consistent across the three years. Lastly, we perform an F test comparing GLM2 with GLM3. The p value is almost 0 (8.863e-15) and therefore extremely significant. From our statistical tests, we include vehicle_age in our model and GLM3 is therefore our best model so far.
 
-```{r, include=FALSE}
+```{r}
 # time consistency
 compData = compData %>%
   mutate(AY_factor = as.factor(Accident_year))
@@ -290,7 +290,7 @@ glm_vehicle_age_TC <- glm(Comp_claim_count ~ AY_factor * vehicle_age,
 summary(glm_vehicle_age_TC)
 ```
 
-```{r, echo=FALSE}
+```{r}
 effect_2018 = glm_vehicle_age_TC$coefficients['vehicle_age']
 effect_2019 = glm_vehicle_age_TC$coefficients['vehicle_age'] + glm_vehicle_age_TC$coefficients['AY_factor2019:vehicle_age']
 effect_2020 = glm_vehicle_age_TC$coefficients['vehicle_age'] + glm_vehicle_age_TC$coefficients['AY_factor2020:vehicle_age']
@@ -298,7 +298,7 @@ effect_2020 = glm_vehicle_age_TC$coefficients['vehicle_age'] + glm_vehicle_age_T
 kable(data.frame(GLM3$coefficients['vehicle_age'],"2.67e-13",effect_2018,effect_2019,effect_2020), col.names=c("Coefficients", "P-value", "2018 Effect", "2019 Effect","2020 Effect"), digits = 3)
 ```
 
-```{r, include=FALSE}
+```{r}
 AIC_BIC(GLM2)
 AIC_BIC(GLM3)
 anova(GLM2,GLM3, test="F")
@@ -306,13 +306,13 @@ anova(GLM2,GLM3, test="F")
 # Annual distance
 
 Next, we'll investigate whether Annual_distance makes a good predictor. There are some missing values, in this case we'll impute those values with the median of 12000. For validation purposes, the minimum and maximum have also been calculated below:
-```{r, echo=FALSE}
+```{r}
 compData %>%
   filter(partition == "Training") %>%
   pull(Annual_distance) %>%
   quantile(probs = c(0,0.5,1), na.rm = TRUE)
 ```
-```{r, include=FALSE}
+```{r}
 
 # Replace missing values with median Annual_distance of 12000
 compData = compData %>% 
@@ -322,14 +322,14 @@ compData = compData %>%
 
 There are no negative values which is a good sign, however the minimum is 1 which is low but could be possible for vehicles that are rarely driven, e.g vintage collectible cars. Let's keep those small values in for now. The maximum value also seems high. The graph of the distribution (in the appendix) can help us understand the data better:
 
-```{r, include=FALSE}
+```{r}
 ggplot(data = compData %>% filter(partition == "Training" & !is.na(Annual_distance)), aes(x = Annual_distance)) + 
   geom_density() +
   geom_vline(xintercept = 12000, colour = "red")
 ```
 The distribution is very right skewed, and annual distance reaches very large values but with low data volume. Considering right censoring at 35000, since density becomes very low after around this point (this affects 460 observations), we get the following graph:
 
-```{r, echo=FALSE}
+```{r}
 # There is low data volume as annual distance gets higher. Let's consider right censoring. This removes 460 observations
 ggplot(data = compData %>% filter(partition == "Training" & !is.na(Annual_distance)), aes(x = Annual_distance)) + 
   geom_density() + xlim(1,35000) +
@@ -339,7 +339,7 @@ There are 3 noticeable spikes in the data, at 12000, which is expected since we 
 
 We'll fit two models, one with Annual_distance added with no capping, we'll call it GLM4a and one with Annual_distance capped at 35000 (GLM4b). We find that overall, model 4b does better, AIC and BIC both decrease from 15390.86 to 15383.76 and from 15467.92 15460.82. The p-value for GLM4b is smaller (0.000893 vs 0.000227). Thus, we conclude that we want to keep the capped annual distance in our model.
 
-```{r, include=FALSE}
+```{r}
 # Without capping
 GLM4a <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured_age_imputed + vehicle_age + Annual_distance_imputed, 
                 family=quasipoisson(link="log"), 
@@ -351,7 +351,7 @@ GLM4a <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured
 summary(GLM4a)
 ```
 
-```{r, include=FALSE}
+```{r}
 #Plotting functions
 library(insuranceData) # Insurance data package
 library(ggplot2) # For nice plots
@@ -493,13 +493,13 @@ partialResids <- function(mod, term){
 }
 ```
 
-```{r, echo=FALSE}
+```{r}
 # Cap at 35000
 compData = compData %>%
   mutate(Annual_distance_cap_35000 = pmin(Annual_distance_imputed, 35000))
 ```
 
-```{r, include=FALSE}
+```{r}
 # With cap at 35000
 GLM4b <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured_age_imputed + vehicle_age + Annual_distance_cap_35000, 
                 family=quasipoisson(link="log"), 
@@ -511,12 +511,12 @@ GLM4b <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured
 summary(GLM4b)
 ```
 
-```{r, include=FALSE}
+```{r}
 AIC_BIC(GLM4a)
 AIC_BIC(GLM4b)
 ```
 The following graph shows the partial residuals by annual distance (capped at 35000):
-```{r, echo=FALSE}
+```{r}
 compData_train = compData %>%
   filter(partition == "Training")
 
@@ -540,7 +540,7 @@ binnedPlot(dataToPlot,
 ```
 The model does fairly well for annual distance which is less than ~50000, probably due to higher data volumes for annual distances less than 50000. We see an obvious drop at around 75000, thereafter our model consistently overestimates our response. Let's "zoom" in to see a more accurate picture, the following graph shows the partial residuals from [0,80000]: 
 
-```{r, echo=FALSE}
+```{r}
 compData_train = compData %>%
   filter(partition == "Training")
 
@@ -563,7 +563,7 @@ binnedPlot(dataToPlot,
            title = "Partial residuals by annual distance")
 ```
 Our GLM4b model does fairly well for lower annual distances and seem to be picking up the signal quite well, there is some discrepancies where data volume becomes low but this is expected. However, we can see that after 75000, the model consistently overestimates our response (also seen in the earlier graph). We can try to introduce a hinge function at 75000. We do so by fitting another model, called GLM4c, this time with annual distance cap at 35000 and annual distance cap at 75000 added. 
-```{r, include=FALSE}
+```{r}
 # Introducing a hinge function at 75000
 compData = compData %>%
   mutate(Annual_distance_cap_75000 = pmin(Annual_distance_imputed, 75000))
@@ -578,7 +578,7 @@ GLM4c <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured
                 x = TRUE)
 ```
 
-```{r,include=FALSE}
+```{r}
 working_resid = residuals(GLM4c, "working")
 mean_workingResid = weighted.mean(working_resid, 
                                   w = compData_train %>% pull(Comp_earned_count))
@@ -600,7 +600,7 @@ binnedPlot(dataToPlot,
 ```
 We checked the partial residuals graph, the hinge function reduces the distance between the modelled line and the partial residuals line but the model still slightly overfits the response (see appendix). We then compare the fit between model 4b and 4c using a **parsimony** test, we find that both AIC and BIC increase when we add the hinge function (GLM4c) from 15383.76 to 15385.49 and 15460.82 to 15472.19, respectively. The F test also suggest that GLM4b is a better fit with a p value of 0.657. Thus, so far our best model is GLM4b.
 
-```{r, include=FALSE}
+```{r}
 AIC_BIC(GLM4b)
 AIC_BIC(GLM4c)
 anova(GLM4b,GLM4c, test = "F")
@@ -609,7 +609,7 @@ anova(GLM4b,GLM4c, test = "F")
 
 We investigate Comp_earned_count by fitting a model with Comp_earned_count added to our GLM4b model (calling the new model GLM5) and fit another model with Direct_comp_earned_count added to GLM4b (calling this model GLM6). We decide **not** to include both variables. Comp_earned_count fails the BIC test as it increases from 15460.82 to 15468.29, the F-test was also not significant at 5% significance level when comparing GLM4b to GLM6 (p-value=0.06808). Direct_comp_earned count fails the F-test with a p value of 0.1431, as well as the BIC test since BIC increases from 15460.82 (for GLM4b) to 15469.62 (for GLM6).
 
-```{r, include=FALSE}
+```{r}
 GLM5 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured_age_imputed + vehicle_age + Annual_distance_cap_35000 + Comp_earned_count, 
                 family=quasipoisson(link="log"), 
                 data = compData, 
@@ -623,11 +623,11 @@ AIC_BIC(GLM4b)
 AIC_BIC(GLM5)
 ```
 
-```{r, include=FALSE}
+```{r}
 anova(GLM4b,GLM5, test = "F")
 ```
 
-```{r, include=FALSE}
+```{r}
 GLM6 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured_age_imputed + vehicle_age + Annual_distance_cap_35000 + Direct_comp_earned_count, 
                 family=quasipoisson(link="log"), 
                 data = compData, 
@@ -639,7 +639,7 @@ GLM6 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured_
 summary(GLM6)
 ```
 
-```{r, include=FALSE}
+```{r}
 AIC_BIC(GLM4b)
 AIC_BIC(GLM6)
 anova(GLM4b, GLM6, test = "F")
@@ -648,14 +648,14 @@ anova(GLM4b, GLM6, test = "F")
 
 We now create a num_yrs_licensed variable, this is the number of years that the insured has had their license for. We do so by calculating the difference between the insured year licensed and the year of the term effective date. Note that in this case, there were no missing values, so no additional adjustments were made to the data. We fit a glm model with num_yrs_licensed along with the other predictors from GLM4b, we'll call this new model GLM7a.
 
-```{r, include=FALSE}
+```{r}
 # Creating num_yrs_licensed variable
 compData = compData %>%
   mutate(num_yrs_licensed = as.numeric(substr(Term_effective_date,0,4)) - Insured_year_licensed)
 ```
 
 
-```{r, include=FALSE}
+```{r}
 GLM7a <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + insured_age_imputed + vehicle_age + Annual_distance_cap_35000 + num_yrs_licensed, 
                 family=quasipoisson(link="log"), 
                 data = compData, 
@@ -668,7 +668,7 @@ summary(GLM7a)
 ```
 When we fit the model,num_yrs_licensed is **significant** with a p-value of 0.023883. Checking for **reasonability**, the coefficient for num_yrs_licensed is negative which is expected as we expect that more experienced drivers have lower claim frequency, this is a reasonable assumption and a commonly used rating variable in the insurance industry. For a **time consistency** check, we find that the variable is consistent across the three years (see effects plot in the appendix). Finally, for **parsimony**, AIC decreases but BIC increases compared to model 4b.
 
-```{r, include=FALSE}
+```{r}
 # time consistency
 compData = compData %>%
   mutate(AY_factor = as.factor(Accident_year))
@@ -688,11 +688,11 @@ glm_num_yrs_licensed_TC$coefficients['num_yrs_licensed'] + glm_num_yrs_licensed_
 plot(allEffects(glm_num_yrs_licensed_TC), multiline=T)
 ```
 
-```{r, echo=FALSE}
+```{r}
 kable(data.frame(GLM7a$coefficients['num_yrs_licensed'],0.023883,effect_2018,effect_2019,effect_2020), col.names=c("Coefficients", "P-value", "2018 Effect", "2019 Effect","2020 Effect"), digits = 6)
 ```
 
-```{r, include=FALSE}
+```{r}
 # Checking for correlation between insured age and number of years licensed
 cor(compData$insured_age_imputed,
     compData$num_yrs_licensed,
@@ -706,7 +706,7 @@ One important thing to note is that we find that insured_age is not significant 
 
 To decide which variable to keep, we fit the GLM7b model which contains num_yrs_licensed and all our predictors so far except insured_age (i.e factor(Accident_year), Marital_status, vehicle_age, Annual_distance_cap_35000). The following table shows the AIC and BIC of models with both variables, with only insured_age added, and with only num_yrs_licensed added.
 
-```{r, include=FALSE}
+```{r}
 GLM7b <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle_age +
                Annual_distance_cap_35000 + num_yrs_licensed, 
                 family=quasipoisson(link="log"), 
@@ -718,20 +718,20 @@ GLM7b <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle
 summary(GLM7b)
 ```
 
-```{r, include=FALSE}
+```{r}
 AIC_BIC_4b = AIC_BIC(GLM4b)
 AIC_BIC_7a = AIC_BIC(GLM7a)
 AIC_BIC_7b = AIC_BIC(GLM7b)
 ```
 
-```{r, echo=FALSE}
+```{r}
 kable(data.frame(AIC_BIC_4b,AIC_BIC_7a,AIC_BIC_7b), col.names=c("Insured_age only (GLM4b) - AIC", "Insured_age only (GLM4b) - BIC","Both variables (GLM7a)- AIC","Both variables (GLM7a)- BIC", "num_yrs_licensed only (GLM7b) - AIC", "num_yrs_licensed only (GLM7b) - BIC"))
 
 ```
 
 We can see that both AIC and BIC are their lowest for model 7b. Therefore, it suggests that we should **exclude insured_age but include num_yrs_licensed** instead. To validate this even further, we perform an F-test between GLM7a (contains both variables) and GLM7b (excludes insured_age). The p-value is 0.4582 which shows **no evidence that insured_age should also be included**.
 
-```{r, include=FALSE}
+```{r}
 anova(GLM7a, GLM7b, test = "F")
 ```
 
@@ -741,7 +741,7 @@ Next, we created urban_rural_class, this classifies risks accordingly to whether
 
 We fit a new model with urban_rural_class added. However, while it seemed intuitive that claim frequency could depend on territorial regions, urban_rural_class failed the **significance** test with a p value of 0.214. We exclude this variable from our model, and GLM7b remains our best model so far.
 
-```{r, include=FALSE}
+```{r}
 # Create urban_rural_class variable
 compData = compData %>%
   mutate(Risk_postal_code_missing = (Risk_postal_code == ""),
@@ -749,7 +749,7 @@ compData = compData %>%
   mutate(urban_rural_class = ifelse(substr(Risk_postal_code_imputed,2,2) == "0", "Rural", "Urban"))
 ```
 
-```{r, include=FALSE}
+```{r}
 GLM8 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle_age +
                Annual_distance_cap_35000 + num_yrs_licensed + urban_rural_class, 
                 family=quasipoisson(link="log"), 
@@ -771,7 +771,7 @@ We impute missing values for Vehicle_wheelbase with the median. We then fit a mo
 
 Hence, from the table below, we can see that AIC and BIC are the lowest for model 10b. The F-test further supports this argument because of the large p value of 0.241 when comparing nested models 10a (includes both variables) and GLM10b (only includes Vehicle_wheelbase). Thus, we conclude that we want to **exclude Vehicle_retail_price and include Vehicle_wheelbase** instead.
 
-```{r, include=FALSE}
+```{r}
 # Vehicle retail price
 compData %>%
   filter(partition == "Training") %>%
@@ -779,14 +779,14 @@ compData %>%
   quantile(probs = c(0,0.5,1), na.rm = TRUE)
 ```
 
-```{r, include=FALSE}
+```{r}
 # Replace missing values with median retail price of 30388
 compData = compData %>% 
   mutate(Vehicle_retail_price_missing = is.na(Vehicle_retail_price),
          Vehicle_retail_price_imputed = ifelse(Vehicle_retail_price_missing, 30388, Vehicle_retail_price))
 ```
 
-```{r, include=FALSE}
+```{r}
 GLM9 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle_age +
                Annual_distance_cap_35000 + num_yrs_licensed + Vehicle_retail_price_imputed, 
                 family=quasipoisson(link="log"), 
@@ -798,13 +798,13 @@ GLM9 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle_
 summary(GLM9)
 ```
 
-```{r, include=FALSE}
+```{r}
 AIC_BIC(GLM7b)
 AIC_BIC(GLM9)
 anova(GLM7b,GLM9, test = "F")
 ```
 
-```{r, include=FALSE}
+```{r}
 # Vehicle_wheelbase
 compData %>%
   filter(partition == "Training") %>%
@@ -812,14 +812,14 @@ compData %>%
   quantile(probs = c(0,0.5,1), na.rm = TRUE)
 ```
 
-```{r, include=FALSE}
+```{r}
 # Replace missing values with median Vehicle_wheelbase of 2800
 compData = compData %>% 
   mutate(Vehicle_wheelbase_missing = is.na(Vehicle_wheelbase),
          Vehicle_wheelbase_imputed = ifelse(Vehicle_wheelbase_missing, 2800, Vehicle_wheelbase))
 ```
 
-```{r, include=FALSE}
+```{r}
 GLM10a <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle_age +
                Annual_distance_cap_35000 + num_yrs_licensed + Vehicle_retail_price_imputed + Vehicle_wheelbase_imputed, 
                 family=quasipoisson(link="log"), 
@@ -831,7 +831,7 @@ GLM10a <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicl
 summary(GLM10a)
 ```
 
-```{r, include=FALSE}
+```{r}
 # Checking for correlation
 cor(compData$Vehicle_retail_price_imputed,
     compData$Vehicle_wheelbase_imputed,
@@ -842,7 +842,7 @@ cor(compData$Vehicle_retail_price_imputed,
     method = "spearman")
 ```
 
-```{r, include=FALSE}
+```{r}
 GLM10b <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle_age +
                Annual_distance_cap_35000 + num_yrs_licensed + Vehicle_wheelbase_imputed, 
                 family=quasipoisson(link="log"), 
@@ -854,7 +854,7 @@ GLM10b <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicl
 summary(GLM10b)
 ```
 
-```{r, echo=FALSE}
+```{r}
 AIC_BIC_9 = AIC_BIC(GLM9)
 AIC_BIC_10a = AIC_BIC(GLM10a)
 AIC_BIC_10b = AIC_BIC(GLM10b)
@@ -862,7 +862,7 @@ AIC_BIC_10b = AIC_BIC(GLM10b)
 kable(data.frame(AIC_BIC_4b,AIC_BIC_7a,AIC_BIC_7b), col.names=c("Vehicle_retail_price only (GLM9) - AIC", "Vehicle_retail_price only (GLM9) - BIC","Both variables (GLM10a)- AIC","Both variables (GLM10a)- BIC", "Vehicle_wheelbase only (GLM10b) - AIC", "Vehicle_wheelbase only (GLM10b) - BIC"))
 ```
 
-```{r, include=FALSE}
+```{r}
 anova(GLM10a, GLM10b, test = "F")
 ```
 
@@ -917,7 +917,7 @@ AIC_BIC(GLM11)
 
 Next we tried adding Vehicle_horsepower to our model after imputing the missing values with the median from our training data. Hwoever, we find that vehicle_horsepower was not significant with a large p value of 0.77003. Therefore, we decided to exclude it from our model.
 
-```{r, include=FALSE}
+```{r}
 # Vehicle_horsepower
 compData %>%
   filter(partition == "Training") %>%
@@ -925,14 +925,14 @@ compData %>%
   quantile(probs = c(0,0.5,1), na.rm = TRUE)
 ```
 
-```{r, include=FALSE}
+```{r}
 # Replace missing values with median Vehicle_horsepower of 190
 compData = compData %>% 
   mutate(Vehicle_horsepower_missing = is.na(Vehicle_horsepower),
          Vehicle_horsepower_imputed = ifelse(Vehicle_horsepower_missing, 190, Vehicle_horsepower))
 ```
 
-```{r, include=FALSE}
+```{r}
 GLM14 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle_age +
                Annual_distance_cap_35000 + num_yrs_licensed + Vehicle_wheelbase_imputed + Vehicle_horsepower_imputed, 
                 family=quasipoisson(link="log"), 
@@ -948,13 +948,13 @@ summary(GLM14)
 
 Next, we try fitting Comp_deductible in our model as a categorical variable taking levels 100, 500 and 1000. We find that the majority of exposures were in the 500 level (see appendix), so we don't know if that would be a good variable to include due to the low data volume in the other levels. Nonetheless, let's perform the usual statistical tests. 
 
-```{r, include=FALSE}
+```{r}
 # Make Comp_deductible a string to take as categorical variable)
 compData = compData %>% 
   mutate(Comp_deductible_ascat = as.character(Comp_deductible))
 ```
 
-```{r, include=FALSE}
+```{r}
 compData %>% 
   filter(partition == "Training") %>%
   group_by(Comp_deductible_ascat) %>%
@@ -963,7 +963,7 @@ compData %>%
 ```
 For the **significance** test, We find that the p value is small for the 500 level but higher for the 1000 level. From a **reasonability** standpoint, using comp_deductible as a rating variable is possible since it policyholders with higher deductible levels will only report claims with large loss amounts resulting in lower claim frequency, and we have seen this pattern in the table above. For **parsimony**, AIC decreases from 15370.02 to 15362.94 but BIC increases from 15456.71 to 15468.9. Performing a **time consistency** check, we see that the 500 level is consistent across the three years but the 1000 level isn't. We are more concerned that the 500 level is consistent since it has the majority of exposures. Finally, let's perform an F test, the p value is small (0.01479), so there is evidence that adding Comp_deductible improves our fit. Although there isn't a clear cut from our tests whether this variable should be included or not. Let's keep it for now and we'll perform more validation later on the holdout set.
 
-```{r, include=FALSE}
+```{r}
 GLM15 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle_age + Annual_distance_cap_35000 + num_yrs_licensed + Vehicle_wheelbase_imputed + Comp_deductible_ascat,
                 family=quasipoisson(link="log"), 
                 data = compData, 
@@ -974,13 +974,13 @@ GLM15 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle
 summary(GLM15)
 ```
 
-```{r, include=FALSE}
+```{r}
 anova(GLM10b,GLM15, test = "F")
 AIC_BIC(GLM10b)
 AIC_BIC(GLM15)
 ```
 
-```{r, include=FALSE}
+```{r}
 # time consistency
 compData = compData %>%
   mutate(AY_factor = as.factor(Accident_year))
@@ -994,7 +994,7 @@ glm_Comp_deductible_ascat_TC <- glm(Comp_claim_count ~ AY_factor * Comp_deductib
 summary(glm_Comp_deductible_ascat_TC)
 ```
 
-```{r, echo=FALSE}
+```{r}
 
 effect_2018_1000 = glm_Comp_deductible_ascat_TC$coefficients['Comp_deductible_ascat1000'] 
 effect_2019_1000 = glm_Comp_deductible_ascat_TC$coefficients['Comp_deductible_ascat1000'] + glm_Comp_deductible_ascat_TC$coefficients['AY_factor2019:Comp_deductible_ascat1000']
@@ -1013,13 +1013,13 @@ We create a new variable called yrs_since_purchased which is the number of years
 
 Again we perform our usual tests after fitting the model which we call GLM16. We find that the variable is significant (p value = 0.014285) and the F-test shows a small p value of 0.01103 too. The added variable passes the AIC test but fails the BIC test. Overall, the variable improves the model fit, so we include it for now.
 
-```{r, include=FALSE}
+```{r}
 # Creating yrs_since_purchased variable
 compData = compData %>%
   mutate(yrs_since_purchased = as.numeric(substr(Term_effective_date,0,4)) - as.numeric(substr(Vehicle_purchase_date,0,4)))
 ```
 
-```{r, include=FALSE}
+```{r}
 # yrs_since_purchased
 compData %>%
   filter(partition == "Training") %>%
@@ -1027,13 +1027,13 @@ compData %>%
   quantile(probs = c(0,0.5,1), na.rm = TRUE)
 ```
 
-```{r, include=FALSE}
+```{r}
 compData = compData %>%
   mutate(yrs_since_purchased_missing = is.na(yrs_since_purchased),
          yrs_since_purchased_imputed = ifelse(yrs_since_purchased_missing, 3, yrs_since_purchased))
 ```
 
-```{r, include=FALSE}
+```{r}
 GLM16 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle_age + Annual_distance_cap_35000 + num_yrs_licensed + Vehicle_wheelbase_imputed + Comp_deductible_ascat + yrs_since_purchased_imputed,
                 family=quasipoisson(link="log"), 
                 data = compData, 
@@ -1044,7 +1044,7 @@ GLM16 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle
 summary(GLM16)
 ```
 
-```{r, include=FALSE}
+```{r}
 anova(GLM15,GLM16, test = "F")
 AIC_BIC(GLM15)
 AIC_BIC(GLM16)
@@ -1052,13 +1052,13 @@ AIC_BIC(GLM16)
 # Years with company
 Lastly, we create a new variable, yrs_with_company, which is the number of years someone has been a policyholder with us. However, this variable turned out to not be significant as it had a large p value of 0.118689, so we didn't include it.
 
-```{r, include=FALSE}
+```{r}
 # Creating yrs_with_company variable
 compData = compData %>%
   mutate(yrs_with_company = as.numeric(substr(Term_effective_date,0,4)) - as.numeric(substr(Inception_date,0,4)))
 ```
 
-```{r, include=FALSE}
+```{r}
 # yrs_with_company
 compData %>%
   filter(partition == "Training") %>%
@@ -1066,13 +1066,13 @@ compData %>%
   quantile(probs = c(0,0.5,1), na.rm = TRUE)
 ```
 
-```{r, include=FALSE}
+```{r}
 compData = compData %>%
   mutate(yrs_with_company_missing = is.na(yrs_with_company),
          yrs_with_company_imputed = ifelse(yrs_with_company_missing, 6, yrs_with_company))
 ```
 
-```{r, include=FALSE}
+```{r}
 GLM17 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle_age + Annual_distance_cap_35000 + num_yrs_licensed + Vehicle_wheelbase_imputed + Comp_deductible_ascat + yrs_since_purchased_imputed + yrs_with_company_imputed,
                 family=quasipoisson(link="log"), 
                 data = compData, 
@@ -1083,7 +1083,7 @@ GLM17 <- glm(Comp_claim_count ~ factor(Accident_year) + Marital_status + vehicle
 summary(GLM17)
 ```
 
-```{r, include=FALSE}
+```{r}
 # Function to save predictions
 savePredictions <- function(glmModel, kaggleSubmission, saveLocation = getwd()){
     # Save time
@@ -1108,7 +1108,7 @@ savePredictions <- function(glmModel, kaggleSubmission, saveLocation = getwd()){
 }
 ```
 
-```{r, include=FALSE}
+```{r}
 # # Import data
 # require(data.table)
 # train = fread("compDatasetTrain1.csv")
@@ -1193,7 +1193,7 @@ savePredictions <- function(glmModel, kaggleSubmission, saveLocation = getwd()){
 # savePredictions(GLM_to_test, kaggleSubmission, saveLocation = getwd())
 ```
 
-```{r, include=FALSE}
+```{r}
 WeightedGini <- function(solution, weights = NULL, submission){
   if (is.null(weights)){
     weights = rep(1, length(solution))
@@ -1425,7 +1425,7 @@ cvFunction <- function(formula, dat, p = 1.5, numFolds = 5, seed = 123){
 
 ```
 
-```{r, include=FALSE}
+```{r}
 compData_holdout = compData %>%
   filter(partition == "Holdout")
 holdout_test_data = data.frame(observed_count = compData_holdout %>% pull(Comp_claim_count),
@@ -1437,7 +1437,7 @@ holdout_test_data = data.frame(observed_count = compData_holdout %>% pull(Comp_c
 holdout_test_data %>% head()
 ```
 
-```{r, include=FALSE}
+```{r}
 holdout_frequency = holdout_test_data %>% pull(observed_count) %>% sum() / holdout_test_data %>% pull(exposure) %>% sum()
 training_frequency = compData_train %>% pull(Comp_earned_count) %>% sum() / compData_train %>% pull(Comp_earned_count) %>% sum()
 adj_factor = holdout_frequency / training_frequency
@@ -1446,7 +1446,7 @@ holdout_test_data = holdout_test_data %>%
          normalized_prediction_option_2 = adj_factor * prediction_option_2)
 ```
 
-```{r, include=FALSE}
+```{r}
 gini_10b = NormalizedWeightedGini(solution = holdout_test_data %>% pull(observed_frequency),
                        weights = holdout_test_data %>% pull(exposure),
                        submission = holdout_test_data %>% pull(normalized_prediction_option_1))
@@ -1459,7 +1459,7 @@ gini_16 = NormalizedWeightedGini(solution = holdout_test_data %>% pull(observed_
 
 # Final model validation
 Finally, our final model is GLM16 with variables: factor(Accident_year), Marital_status, vehicle_age, Annual_distance_cap_35000, num_yrs_licensed, Vehicle_wheelbase_imputed, Comp_deductible_ascat and yrs_since_purchased_imputed. All of which are still significant. Recall that it was not a clear cut whether or not to include Comp_deductible and yrs_since_purchased in our final model. We mentioned earlier that we would do further validation. Let's compare our final model GLM16 with GLM10b which is contains the same variables except Comp_deductible and yrs_since_purchased. We calculate the normalized weighted Gini coefficient on our holdout set. The following table shows our results:
-```{r, echo=FALSE}
+```{r}
 kable(data.frame(gini_10b,gini_16), col.names = c("GLM10b", "GLM16"))
 ```
 Thus, we find although they are quite similar, GLM16 does seem to be a better fit when comparing the Gini coefficients on holdout data. Therefore, we select GLM16 as our final model!
