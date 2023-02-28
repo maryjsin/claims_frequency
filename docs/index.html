@@ -1636,6 +1636,13 @@ customer is going to have an accident and submit a claim in a particular
 year. Since these accidents are fairly rare (hopefully!), we have an
 unbalanced data set where the claim count (response variable) is most of
 the time 0.</p>
+<p>I used a Quasi-Poisson regression model for this project. The Poisson
+distribution is useful to model count data which is what we want.
+However, I used a Quasi-Poisson regression model which is a
+generalization of the Poisson regression and is used when modeling an
+overdispersed count variable. The Poisson model assumes that the
+variance is equal to the mean, which is not a fair assumption for this
+project.</p>
 <p>For feature selection, I’ve added features one at a time and compared
 the models’ performance using an ANOVA F test, a significance test of
 the feature and metrics such as AIC/BIC. As a final validation check,
