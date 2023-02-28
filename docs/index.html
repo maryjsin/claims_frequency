@@ -12,7 +12,7 @@
 <meta name="author" content="Mary Sin Fai Lam (20696951)" />
 
 
-<title>ACTSC 489 Interim Assessment - Frequency Model</title>
+<title>Interim Assessment - Frequency Model</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -1620,20 +1620,31 @@ display: none;
 
 
 
-<h1 class="title toc-ignore">ACTSC 489 Interim Assessment - Frequency
-Model</h1>
+<h1 class="title toc-ignore">Interim Assessment - Frequency Model</h1>
 <h4 class="author">Mary Sin Fai Lam (20696951)</h4>
 <h4 class="date">22/02/2022</h4>
 
 </div>
 
 
-<div id="assumptions-and-data-adjustments" class="section level2">
-<h2>Assumptions and data adjustments</h2>
-<p>Prior to the modelling process, we made the assumptions found on the
-case study outline found on Learn. Other assumptions and data
-adjustments made will be discussed throughout the report as we go
-through the modelling process.</p>
+<div id="readme" class="section level1">
+<h1>README</h1>
+<p>This is a project that I worked on in one of my fourth year courses
+at the University of Waterloo. The aim was to use insurance claims data
+to predict claims frequency. In other words, the number of times that a
+customer is going to have an accident and submit a claim in a particular
+year. Since these accidents are fairly rare (hopefully!), we have an
+unbalanced data set where the claim count (response variable) is most of
+the time 0.</p>
+<p>For feature selection, I’ve added features one at a time and compared
+the models’ performance using an ANOVA F test, a significance test of
+the feature and metrics such as AIC/BIC. As a final validation check,
+I’ve compared the Gini coefficient on the holdout set of my top
+models.</p>
+<p>Note: You’ll notice that I refer to exposures a lot throughout the
+script, exposures are essentially how long a customer has been insured
+by company in a particular year. E.g A customer who has been insured for
+half a year will have an exposure of 0.5.</p>
 <pre class="r"><code>library(dplyr)</code></pre>
 <pre><code>## 
 ## Attaching package: &#39;dplyr&#39;</code></pre>
@@ -1650,8 +1661,8 @@ set.seed(12345)
 compData$rand_sample &lt;- runif(nrow(compData), 0, 1)
 compData$partition &lt;-ifelse(compData$rand_sample&lt;0.7, &quot;Training&quot;, &quot;Holdout&quot;)</code></pre>
 </div>
-<div id="eda-on-critical-modelling-variables" class="section level2">
-<h2>EDA on critical modelling variables</h2>
+<div id="eda-on-critical-modelling-variables" class="section level1">
+<h1>EDA on critical modelling variables</h1>
 </div>
 <div id="eda-on-response" class="section level1">
 <h1>EDA on response</h1>
@@ -1724,9 +1735,9 @@ GLM_initial &lt;- glm(Comp_claim_count ~ factor(Accident_year),
                 subset=(partition==&quot;Training&quot;), 
                 na.action=&quot;na.pass&quot;,
                 x = TRUE)</code></pre>
-<div id="fitting-predictors" class="section level2">
-<h2>Fitting predictors</h2>
 </div>
+<div id="fitting-predictors" class="section level1">
+<h1>Fitting predictors</h1>
 </div>
 <div id="marital-status" class="section level1">
 <h1>Marital Status</h1>

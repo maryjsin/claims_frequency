@@ -1,5 +1,5 @@
 ---
-title: "ACTSC 489 Interim Assessment - Frequency Model"
+title: "Interim Assessment - Frequency Model"
 author: "Mary Sin Fai Lam (20696951)"
 date: "22/02/2022"
 output:
@@ -8,8 +8,13 @@ output:
 fontsize: 11pt
 ---
 
-## Assumptions and data adjustments
-Prior to the modelling process, we made the assumptions found on the case study outline found on Learn. Other assumptions and data adjustments made will be discussed throughout the report as we go through the modelling process. 
+# README
+This is a project that I worked on in one of my fourth year courses at the University of Waterloo. The aim was to use insurance claims data to predict claims frequency. In other words, the number of times that a customer is going to have an accident and submit a claim in a particular year. Since these accidents are fairly rare (hopefully!), we have an unbalanced data set where the claim count (response variable) is most of the time 0. 
+
+For feature selection, I've added features one at a time and compared the models' performance using an ANOVA F test, a significance test of the feature and metrics such as AIC/BIC.
+As a final validation check, I've compared the Gini coefficient on the holdout set of my top models.
+
+Note: You'll notice that I refer to exposures a lot throughout the script, exposures are essentially how long a customer has been insured by company in a particular year. E.g A customer who has been insured for half a year will have an exposure of 0.5.
 
 ```{r}
 library(dplyr)
@@ -21,7 +26,8 @@ compData$rand_sample <- runif(nrow(compData), 0, 1)
 compData$partition <-ifelse(compData$rand_sample<0.7, "Training", "Holdout")
 ```
 
-## EDA on critical modelling variables
+# EDA on critical modelling variables
+
 # EDA on response
 ```{r}
 claim_count_summary = compData %>%
@@ -75,7 +81,7 @@ GLM_initial <- glm(Comp_claim_count ~ factor(Accident_year),
                 x = TRUE)
 ```
 
-## Fitting predictors
+# Fitting predictors
 # Marital Status
 We start with GLM_initial, a glm fit with just the temporal control variable and our log(exposure) offset. Now, we want to add Marital status to our model, we'll call it GLM1. We saw in Assignment 1 that there were many levels to Marital status that were not significant, and there were some missing values. We assign a new level: "Missing" to the missing values. Our exploratory data analysis that indicated that, aside from the “Married” and “Single” levels, most
 levels do not have a large amount of exposure. We should group based on the meaning of the levels, we assign "Married" to the levels Married, Same Sex, and
